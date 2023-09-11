@@ -1,0 +1,7 @@
+tiktoken
+openai[embeddings, wandb, datalib]
+PyPDF2
+logging
+scikit-learn
+python-dotenv
+chromadb

@@ -1,0 +1,3 @@
+root - INFO - Application started.
+root - INFO - Files processed and saved to 'processed/scraped.csv'.
+root - INFO - Dataframe tokenized and embeddings saved to 'processed/embeddings.csv'.
