@@ -2,3 +2,4 @@
 /chat_log.txt
 /data
 /__pycache__
+/processed/scraped.csv
