@@ -21,7 +21,7 @@ COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME")
 
 
 def process_data_for_bot_context_injection():
-    directory = input("Enter the path to your data directory with PDF and/or TXT files: ")
+    directory = input("Enter the path to your data directory with PDF and/or TXT files (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")
     if os.path.exists(directory):
 
         # Start the loading animation in a separate thread
