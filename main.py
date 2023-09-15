@@ -8,26 +8,57 @@ import logging
 import threading
 import time
 import sys
+import chromadb
 
 from dotenv import load_dotenv
 from chatgpt import IntegratedChatGPT
 from openai.datalib.pandas_helper import pandas as pd
-
+from chromadb.config import Settings
+from chromadb.utils import embedding_functions
 
 # Load environment variables
 load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
+openai.api_key = OPENAI_KEY
 
 # Setting up logging
 logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logging.info('Application started.')
 
+
+# Initialize Chroma client
+# chroma_client = chromadb.Client()
+chroma_client = chromadb.Client(Settings(anonymized_telemetry=False, allow_reset=True))
+
+# Create a collection in Chroma to store embeddings
+# chroma_client.reset()
+collection_name = "document_embeddings"
+collection = chroma_client.get_or_create_collection(collection_name)
+logging.info('Chroma Collection created! The collection name is: %s', collection_name)
+
+def add_embeddings_to_chroma(df):
+    """Add embeddings from the dataframe to Chroma."""
+    try:
+        # Extract embeddings, documents, and ids
+        embeddings = df['embeddings'].tolist()
+        documents = df['text'].tolist()
+
+        # Convert the range of integers to a list of strings
+        ids = [str(i) for i in range(len(df))]
+
+        # Add to Chroma collection
+        collection.add(embeddings=embeddings, documents=documents, ids=ids)
+        logging.info("Embeddings added to Chroma.")
+    except Exception as e:
+        logging.error(f"Error adding embeddings to Chroma: {e}")
+
 # Function to show a console loading animation
 def loading_animation(event):
     animation_chars = ["|", "/", "-", "\\"]
     i = 0
-    sys.stdout.write('Processing documents: ')
+    sys.stdout.write(' Processing documents: ')
     while not event.is_set():
         if i > 3:
             i = 0
@@ -107,14 +138,14 @@ def process_files_with_animation(directory):
 def tokenize_dataframe(df):
     """Tokenize the dataframe using OpenAI's tiktoken."""
     tokenizer = tiktoken.get_encoding("cl100k_base")
-    df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x)))
+    df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x, allowed_special="all")) if x.strip() != "" else 0)
 
     max_tokens = 500
 
     def split_into_many(text, max_tokens=max_tokens):
         """Split the text into many based on the given max tokens."""
         sentences = text.split('. ')
-        n_tokens = [len(tokenizer.encode(" " + sentence)) for sentence in sentences]
+        n_tokens = [len(tokenizer.encode(" " + sentence, allowed_special="all")) for sentence in sentences]
         chunks = []
         tokens_so_far = 0
         chunk = []
@@ -142,16 +173,24 @@ def tokenize_dataframe(df):
             shortened.append(row[1]['text'])
 
     df = pd.DataFrame(shortened, columns=['text'])
-    df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x)))
+    df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x, allowed_special="all")))
 
     try:
-        df['embeddings'] = df.text.apply(lambda x: openai.Embedding.create(input=x, engine='text-embedding-ada-002')['data'][0]['embedding'])
+        # df['embeddings'] = df.text.apply(lambda x: openai.Embedding.create(input=x, engine='text-embedding-ada-002')['data'][0]['embedding'])
+        # openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+        #         api_key="YOUR_API_KEY",
+        #         model_name="text-embedding-ada-002"
+        #     )
+        default_ef = embedding_functions.DefaultEmbeddingFunction()
+        df['embeddings'] = df.text.apply(lambda x: default_ef(x))
         # Ensure 'processed' directory exists
-        if not os.path.exists('processed'):
-            os.makedirs('processed')
-    
-        df.to_csv('processed/embeddings.csv')
-        logging.info("Dataframe tokenized and embeddings saved to 'processed/embeddings.csv'.")
+        # if not os.path.exists('processed'):
+        #     os.makedirs('processed')
+
+        add_embeddings_to_chroma(df)
+        logging.info("Dataframe tokenized and embeddings saved to chromadb.")
+        # df.to_csv('processed/embeddings.csv')
+        # logging.info("Dataframe tokenized and embeddings saved to 'processed/embeddings.csv'.")
         return df
     except Exception as e:
         logging.error(f"Error creating embeddings: {e}")
@@ -162,12 +201,12 @@ def bot():
     """Main bot loop to answer questions using IntegratedChatGPT."""
 
     # Check if the 'processed/embeddings.csv' file exists
-    if not os.path.exists('processed/embeddings.csv'):
-        logging.error("The 'processed/embeddings.csv' file does not exist. Please ensure files have been processed correctly.")
-        print("The 'processed/embeddings.csv' file does not exist. Please ensure files have been processed correctly.")
-        return  # Exit the function if the file doesn't exist
+    # `if not os.path.exists('processed/embeddings.csv'):
+    #     logging.error("The 'processed/embeddings.csv' file does not exist. Please ensure files have been processed correctly.")
+    #     print("The 'processed/embeddings.csv' file does not exist. Please ensure files have been processed correctly.")
+    #     `return  # Exit the function if the file doesn't exist
 
-    chat_bot = IntegratedChatGPT( chatbot="I am a bot trained on the provided documents.", embeddings_csv_path='processed/embeddings.csv')
+    chat_bot = IntegratedChatGPT( chatbot="I am a bot trained on the provided documents.", collection=collection)
 
     while True:
         question = input("Ask me a question or type 'exit' to quit: ")

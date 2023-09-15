@@ -4,4 +4,4 @@ PyPDF2
 logging
 scikit-learn
 python-dotenv
-chromadb
+chromadb[config, utils]
