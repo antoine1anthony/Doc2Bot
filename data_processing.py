@@ -3,13 +3,10 @@
 import os
 import logging
 import tiktoken
-import openai
 import PyPDF2
 from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
-from openai.embeddings_utils import distances_from_embeddings
-
-from typing import List, Union, Tuple
+from typing import List
 
 # Load environment variables
 load_dotenv()

@@ -3,22 +3,17 @@
 from chroma_integration import index_data_to_chroma
 from data_processing import process_files, tokenize_dataframe
 from cli_animations import loading_animation
+from dotenv import load_dotenv
 import os
 import logging
 import time
 import threading
-
-
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
 # Create constants
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME")
-
-
-
 
 def process_data_for_bot_context_injection():
     directory = input("Enter the path to your data directory with PDF and/or TXT files (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")

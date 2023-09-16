@@ -1,9 +1,6 @@
 #chatgpt.py
 import openai
 import logging
-from openai.embeddings_utils import distances_from_embeddings
-from openai.datalib.numpy_helper import numpy as np
-from openai.datalib.pandas_helper import pandas as pd
 from chroma_integration import  create_context
 from typing import List, Optional, Dict, Any
 

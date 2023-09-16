@@ -5,3 +5,4 @@ logging
 scikit-learn
 python-dotenv
 chromadb[config, utils]
+pytest
