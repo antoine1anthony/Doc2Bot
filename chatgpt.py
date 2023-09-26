@@ -1,67 +1,32 @@
 #chatgpt.py
 import openai
 import logging
-
-from openai.embeddings_utils import distances_from_embeddings
-from openai.datalib.numpy_helper import numpy as np
-from openai.datalib.pandas_helper import pandas as pd
+from chroma_integration import  create_context
+from typing import List, Optional, Dict, Any
 
 # Define an exception for the ChatGPT class for better error handling.
 class ChatGPTError(Exception):
     pass
 
 class IntegratedChatGPT:
-    DEFAULT_PARAMS = {
+    DEFAULT_PARAMS: Dict[str, Any] = {
         "temperature": 0.75,
         "frequency_penalty": 0.2,
         "presence_penalty": 0
     }
 
-    def __init__(self, chatbot, embeddings_csv_path, retries=3):
-        """
-        Initialize the IntegratedChatGPT class.
-
-        Parameters:
-        - api_key (str): OpenAI API key.
-        - chatbot (str): System message for chatbot.
-        - embeddings_csv_path (str): Path to the embeddings CSV file.
-        - retries (int): Number of retries for the chat API call in case of failure.
-        """
+    def __init__(self, chatbot: str, collection_name: str, retries: int = 3):
         self.chatbot = chatbot
-        self.conversation = []  # To store the conversation history
+        self.conversation: List[Dict[str, str]] = []  # To store the conversation history
         self.retries = retries
-        self.df = self.load_embeddings(embeddings_csv_path)  # Load embeddings from the CSV
+        self.collection_name = collection_name
 
-    def load_embeddings(self, embeddings_csv_path):
-        """
-        Load embeddings from a CSV file.
-
-        Parameters:
-        - embeddings_csv_path (str): Path to the embeddings CSV file.
-
-        Returns:
-        - DataFrame: DataFrame containing the loaded embeddings.
-        """
-        df = pd.read_csv(embeddings_csv_path, index_col=0)
-        df['embeddings'] = df['embeddings'].apply(eval).apply(np.array)
-        return df
-
-    def chat(self, user_input, log_file, bot_name):
-        """
-        Facilitate a chat interaction using user input.
-
-        Parameters:
-        - user_input (str): Input provided by the user.
-        - log_file (str): File to log the conversation.
-        - bot_name (str): Name of the chatbot to display in logs.
-
-        Returns:
-        - str: Response from the chatbot.
-        """
+    def chat(self, user_input: str, log_file: str, bot_name: str) -> str:
         self.conversation.append({"role": "user", "content": user_input})
 
+
         # Create context from embeddings
-        context = self.create_context(user_input, self.df)
+        context = create_context(self.collection_name, user_input)
 
         # If a context is available, answer using that context, otherwise revert to a standard GPT chat.
         if context:
@@ -82,36 +47,14 @@ class IntegratedChatGPT:
             self.conversation.pop(0)
         return response
 
-    def is_repetitive(self, response):
-        """
-        Check if a response is repetitive in the last three messages.
-
-        Parameters:
-        - response (str): The response to check.
-
-        Returns:
-        - bool: True if repetitive, otherwise False.
-        """
+    def is_repetitive(self, response: str) -> bool:
         for message in self.conversation[-3:]:
             if message['content'] == response:
                 return True
         return False
 
-    def chatgpt(self, conversation, chatbot, user_input, **kwargs):
-        """
-        Facilitate a chat interaction using OpenAI's chat API.
-
-        Parameters:
-        - conversation (list): History of the conversation.
-        - chatbot (str): System message for chatbot.
-        - user_input (str): Input provided by the user.
-        - **kwargs: Additional parameters for the chat API call.
-
-        Returns:
-        - str: Response from the chatbot.
-        """
+    def chatgpt(self, conversation: List[Dict[str, str]], chatbot: str, user_input: str, **kwargs) -> str:
         params = {**self.DEFAULT_PARAMS, **kwargs}
-        
         messages_input = conversation.copy()
         messages_input.insert(0, {"role": "system", "content": chatbot})
 
@@ -134,19 +77,7 @@ class IntegratedChatGPT:
         else:
             return chat_response
 
-    def chatgpt_with_retry(self, conversation, chatbot, user_input, **kwargs):
-        """
-        Retry the chatgpt function in case of failures.
-
-        Parameters:
-        - conversation (list): History of the conversation.
-        - chatbot (str): System message for chatbot.
-        - user_input (str): Input provided by the user.
-        - **kwargs: Additional parameters for the chat API call.
-
-        Returns:
-        - str: Response from the chatbot.
-        """
+    def chatgpt_with_retry(self, conversation: List[Dict[str, str]], chatbot: str, user_input: str, **kwargs) -> Optional[str]:
         for i in range(self.retries):
             try:
                 return self.chatgpt(conversation, chatbot, user_input, **kwargs)
@@ -157,49 +88,9 @@ class IntegratedChatGPT:
                 raise ChatGPTError from e
         return None
 
-    def create_context(self, question, df, max_len=1800, size="ada"):
-        """
-        Create a context using embeddings for the chatbot.
+    
 
-        Parameters:
-        - question (str): Question provided by the user.
-        - df (DataFrame): DataFrame containing embeddings.
-        - max_len (int): Maximum token length for context.
-        - size (str): Model size for embeddings.
-
-        Returns:
-        - str: Context for the chatbot.
-        """
-        try:
-            q_embeddings = openai.Embedding.create(input=question, engine='text-embedding-ada-002')['data'][0]['embedding']
-            df['distances'] = distances_from_embeddings(q_embeddings, df['embeddings'].values, distance_metric='cosine')
-        except Exception as e:
-            logging.error(f"Error creating context: {e}")
-            raise ChatGPTError("Error creating context.") from e
-
-        returns = []
-        cur_len = 0
-
-        for i, row in df.sort_values('distances', ascending=True).iterrows():
-            cur_len += row['n_tokens'] + 4
-            if cur_len > max_len:
-                break
-            returns.append(row["text"])
-
-        return "\n\n###\n\n".join(returns)
-
-    def answer_using_embeddings(self, question, context, **kwargs):
-        """
-        Generate an answer using a provided context.
-
-        Parameters:
-        - question (str): Question provided by the user.
-        - context (str): Context for the chatbot.
-        - **kwargs: Additional parameters for the chat API call.
-
-        Returns:
-        - str: Response from the chatbot.
-        """
+    def answer_using_embeddings(self, question: str, context: str, **kwargs) -> str:
         params = {**self.DEFAULT_PARAMS, **kwargs}
         
         # Add the specific prompt related to the context and question to the conversation
