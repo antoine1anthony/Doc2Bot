@@ -6,3 +6,4 @@ scikit-learn
 python-dotenv
 chromadb[config, utils]
 pytest
+bs4

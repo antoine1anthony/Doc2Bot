@@ -1,4 +1,4 @@
-#index_data.py
+# index_data.py
 
 from chroma_integration import index_data_to_chroma
 from data_processing import process_files, tokenize_dataframe
@@ -8,6 +8,7 @@ import os
 import logging
 import time
 import threading
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -16,33 +17,43 @@ load_dotenv()
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME")
 
 def process_data_for_bot_context_injection():
-    directory = input("Enter the path to your data directory with PDF and/or TXT files (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")
-    if os.path.exists(directory):
+    directories_input = input("Enter the paths to your data directories separated by commas (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")
+    directories = directories_input.split(',')
 
-        # Start the loading animation in a separate thread
-        stop_animation = threading.Event()
-        animation_thread = threading.Thread(target=loading_animation, args=(stop_animation,))
-        animation_thread.start()
+    all_dataframes = []  # List to store dataframes from each directory
 
-        # Start timer to calculate processing time
-        start_time = time.time()
+    for directory in directories:
+        directory = directory.strip()  # Remove any leading/trailing whitespace
+        if os.path.exists(directory):
 
-        # Process the files
-        df = process_files(directory)
+            # Start the loading animation in a separate thread
+            stop_animation = threading.Event()
+            animation_thread = threading.Thread(target=loading_animation, args=(stop_animation,))
+            animation_thread.start()
 
-        # Tokenize the dataframe
-        df = tokenize_dataframe(df)
+            # Start timer to calculate processing time
+            start_time = time.time()
 
-        # Stop the loading animation
-        stop_animation.set()
-        animation_thread.join()
+            # Process the files
+            df = process_files(directory)
 
-        # Calculate and print processing time
-        processing_time = (time.time() - start_time) / 60
-        print(f"Processing completed in {processing_time:.2f} minutes.")
+            # Stop the loading animation
+            stop_animation.set()
+            animation_thread.join()
 
-        index_data_to_chroma(df, COLLECTION_NAME)
-    else:
-        logging.error(f"Directory {directory} not found.")
-        print(f"Directory {directory} not found.")
+            # Calculate and print processing time
+            processing_time = (time.time() - start_time) / 60
+            print(f"Processing completed in {processing_time:.2f} minutes.")
 
+            all_dataframes.append(df)  # Append the processed dataframe to the list
+        else:
+            logging.error(f"Directory {directory} not found.")
+            print(f"Directory {directory} not found.")
+
+    # Combine all dataframes into one
+    combined_df = pd.concat(all_dataframes, ignore_index=True)
+
+    # Tokenize the combined dataframe
+    combined_df = tokenize_dataframe(combined_df)
+
+    index_data_to_chroma(combined_df, COLLECTION_NAME)

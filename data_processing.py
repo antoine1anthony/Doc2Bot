@@ -1,4 +1,4 @@
-#data_processing.py
+# data_processing.py
 
 import os
 import logging
@@ -7,6 +7,7 @@ import PyPDF2
 from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
 from typing import List
+from bs4 import BeautifulSoup
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +38,16 @@ def extract_text_from_txt(txt_path: str) -> str:
         logging.error(f"Error reading TXT {txt_path}: {e}")
         return ""
 
+def extract_text_from_html(html_path: str) -> str:
+    """Extract text from a given HTML file."""
+    try:
+        with open(html_path, 'r', encoding='utf-8') as file:
+            soup = BeautifulSoup(file, 'html.parser')
+            return soup.get_text()
+    except Exception as e:
+        logging.error(f"Error reading HTML {html_path}: {e}")
+        return ""
+
 def remove_newlines(serie: pd.Series) -> pd.Series:
     """Remove newlines and unnecessary spaces from the given pandas series."""
     serie = serie.str.replace('\n', ' ')
@@ -56,6 +67,9 @@ def process_files(directory: str) -> pd.DataFrame:
         elif file.endswith(".pdf"):
             text = extract_text_from_pdf(os.path.join(directory, file))
             texts.append((file[:-4], text))
+        elif file.endswith(".html"):
+            text = extract_text_from_html(os.path.join(directory, file))
+            texts.append((file[:-5], text))
 
     df = pd.DataFrame(texts, columns=['fname', 'text'])
     df['text'] = df.fname + ". " + remove_newlines(df.text)
