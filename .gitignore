@@ -5,3 +5,10 @@
 /processed
 /*.log
 /*.pdf
+/*.zip
+/node.js
+/c++_data
+/postgresql
+/mongodb
+/typescript
+/react_native_data
