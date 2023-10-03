@@ -4,21 +4,21 @@ import os
 import logging
 import openai
 import time
-
 from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from chromadb import Client
-
 from typing import List, Optional
-
-# Setting up logging
-logging.basicConfig(filename="chroma_integration.log", filemode="w", format="%(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logging.info("Chroma Integration module started.")
+from concurrent.futures import ThreadPoolExecutor
+from embeddings_helper import convert_text_to_embedding
 
 # Load environment variables
 load_dotenv()
+
+# Setup logging
+logging.basicConfig(filename="chroma_integration.log", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load OPENAI API Key environment variable and set it within OpenAI API
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
@@ -31,46 +31,60 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 chroma_client = Client(Settings(anonymized_telemetry=False, allow_reset=True))
 embedding_function = OpenAIEmbeddingFunction(api_key=OPENAI_KEY, model_name=EMBEDDING_MODEL)
 
-def create_chroma_collection(collection_name: str) -> Client:
+# Constants
+BATCH_SIZE = 5461  # Set the batch size to the maximum allowed number of embeddings
+EMBEDDING_CONVERSION_BATCH_SIZE = 100  # Set the batch size to a suitable number for your use case
+MAX_THREADS = 15  # Limit the number of threads to prevent overloading
+
+def create_chroma_collection(collection_name: str) -> Optional[Client]:
+    """Create or retrieve a Chroma collection."""
     try:
-        logging.info(f'Creating or retrieving Chroma collection: {collection_name}')
-        print(f'Creating or retrieving Chroma collection: {collection_name}')
+        logger.info(f'Creating or retrieving Chroma collection: {collection_name}')
         collection = chroma_client.get_or_create_collection(collection_name, embedding_function=embedding_function)
-        logging.info(f'Chroma Collection created or retrieved! The collection name is: {collection_name}')
-        print(f'Chroma Collection created or retrieved! The collection name is: {collection_name}')
+        logger.info(f'Chroma Collection created or retrieved! The collection name is: {collection_name}')
         return collection
     except Exception as e:
-        logging.error(f"Error in create_chroma_collection: {e}")
-        print(f"Error: {e}")
-        return None  # Return None in case of an error
-
+        logger.error(f"Error in create_chroma_collection: {e}")
+        return None
 
 def add_embeddings_to_chroma(df: pd.DataFrame, collection):
-    batch_size = 5461  # Set the batch size to the maximum allowed number of embeddings
-    n_batches = -(-len(df) // batch_size)  # Calculate the number of batches, using ceiling division
-    
-    for i in range(n_batches):
-        start_idx = i * batch_size
-        end_idx = start_idx + batch_size
-        batch_df = df.iloc[start_idx:end_idx]  # Get the next batch of data
-        
-        # Prepare the data for submission
+    """Add embeddings to Chroma in batches."""
+    n_batches = -(-len(df) // BATCH_SIZE)
+
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        futures = []
+
+        for i in range(n_batches):
+            start_idx = i * BATCH_SIZE
+            end_idx = start_idx + BATCH_SIZE
+            batch_df = df.iloc[start_idx:end_idx]
+
+            # Asynchronously submit data to Chroma
+            futures.append(executor.submit(_submit_batch_to_chroma, batch_df, collection, i, n_batches))
+
+        # Log results of the futures
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Error in future: {e}")
+
+def _submit_batch_to_chroma(batch_df, collection, batch_index, total_batches):
+    """Submit a single batch of data to Chroma and log the status."""
+    try:
+        logger.info(f'Submitting batch {batch_index + 1} of {total_batches}')
         documents = batch_df.text.tolist()
         embeddings = batch_df.embeddings.tolist()
-        ids = batch_df.index.tolist()  # Assuming the DataFrame index contains unique IDs for each document
-        
-        # Submit the batch of data to Chroma
-        try:
-            print(f'Submitting batch {i + 1} of {n_batches}')
-            collection.add(
-                documents=documents,
-                embeddings=embeddings,
-                ids=ids
-            )
-            print(f'Successfully submitted batch {i + 1} of {n_batches}')
-        except Exception as e:
-            print(f'Error submitting batch {i + 1} of {n_batches}: {e}')
+        ids = [str(idx) for idx in batch_df.index.tolist()]
 
+        collection.add(
+            documents=documents,
+            embeddings=embeddings,
+            ids=ids
+        )
+        logger.info(f'Successfully submitted batch {batch_index + 1} of {total_batches}')
+    except Exception as e:
+        logger.error(f'Error submitting batch {batch_index + 1} of {total_batches}: {e}')
 
 
 def index_data_to_chroma(df: pd.DataFrame, collection_name: str = "default_collection"):
@@ -83,15 +97,37 @@ def index_data_to_chroma(df: pd.DataFrame, collection_name: str = "default_colle
         logging.info('Starting process of turning document text into embedding.')
         print('Starting process of turning document text into embedding.')
 
-        embedding_conversion_start_time = time.time()  # record the start time
-        df["embeddings"] = df.text.apply(lambda x: openai.Embedding.create(input=x, engine="text-embedding-ada-002")["data"][0]["embedding"])
-        embedding_conversion_end_time = time.time()  # record the end time
-        embedding_conversion_elapsed_time = embedding_conversion_end_time - embedding_conversion_start_time  # calculate the elapsed time
+        embedding_conversion_start_time = time.time()  # Record the start time
         
+        # Split the DataFrame into batches
+        n_batches = -(-len(df) // EMBEDDING_CONVERSION_BATCH_SIZE)
+        embeddings = []
+
+        with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+            for i in range(n_batches):
+                start_idx = i * EMBEDDING_CONVERSION_BATCH_SIZE
+                end_idx = start_idx + EMBEDDING_CONVERSION_BATCH_SIZE
+                batch_df = df.iloc[start_idx:end_idx]
+
+                # Asynchronously convert text to embedding
+                futures = [executor.submit(convert_text_to_embedding, text) for text in batch_df.text]
+                
+                # Collect the results and append them to the embeddings list
+                for future in futures:
+                    try:
+                        embeddings.append(future.result())
+                    except Exception as e:
+                        logging.error(f"Error in future: {e}")
+                        embeddings.append([])  # Append an empty embedding in case of an error
+
+        df['embeddings'] = embeddings
+
+        embedding_conversion_end_time = time.time()  # Record the end time
+        embedding_conversion_elapsed_time = (embedding_conversion_end_time - embedding_conversion_start_time) / 60 # Calculate the elapsed time
 
         logging.info('Data embedding conversion finished successfully!')
         print('Data embedding conversion finished successfully!')
-        print(f'Time taken: {embedding_conversion_elapsed_time:.2f} seconds')
+        print(f'Time taken: {embedding_conversion_elapsed_time:.2f} minutes.')
 
         add_embeddings_to_chroma(df, collection)
 
@@ -100,7 +136,6 @@ def index_data_to_chroma(df: pd.DataFrame, collection_name: str = "default_colle
     except Exception as e:
         logging.error(f"Error in index_data_to_chroma: {e}")
         print(f"Error: {e}")
-
 
 def query_chroma_collection(collection: Client, question: str, n_results: int = 5) -> List[dict]:
     try:
@@ -112,7 +147,7 @@ def query_chroma_collection(collection: Client, question: str, n_results: int = 
             include=["distances", "documents"],
         )
         logging.debug(f'Chroma Query Results: {results}')
-        print(f'Chroma Query Results: {results}')
+        # print(f'Chroma Query Results: {results}')
         return results
     except Exception as e:
         logging.error(f"Error in query_chroma_collection: {e}")
@@ -131,7 +166,7 @@ def create_context(collection_name: str, question: str, max_len: int = 1800) -> 
 
         results = query_chroma_collection(collection, question, n_results=5)
         logging.info(f'Query results: {results}')
-        print(f'Query results: {results}')
+        # print(f'Query results: {results}')
 
         # For now, let's just return None since the documents are not available
         if not results.get("documents"):

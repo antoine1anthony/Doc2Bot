@@ -4,29 +4,27 @@ import os
 import logging
 import tiktoken
 import PyPDF2
-from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
-from typing import List
 from bs4 import BeautifulSoup
+from typing import List
+from concurrent.futures import ThreadPoolExecutor
 
-# Load environment variables
-load_dotenv()
+# Setup logging
+logging.basicConfig(filename='data_processing.log', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Setting up logging
-logging.basicConfig(filename='data_processing.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logging.info('Data Processing module started.')
+# Constants
+MAX_THREADS = 15  # Limit the number of threads to prevent overloading
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extract text from a given PDF file."""
     try:
         with open(pdf_path, 'rb') as file:
             reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page_num in range(len(reader.pages)):
-                text += reader.pages[page_num].extract_text()
+            text = "".join([page.extract_text() for page in reader.pages])
         return text
     except Exception as e:
-        logging.error(f"Error reading PDF {pdf_path}: {e}")
+        logger.error(f"Error reading PDF {pdf_path}: {e}")
         return ""
 
 def extract_text_from_txt(txt_path: str) -> str:
@@ -43,45 +41,63 @@ def extract_text_from_html(html_path: str) -> str:
     try:
         with open(html_path, 'r', encoding='utf-8') as file:
             soup = BeautifulSoup(file, 'html.parser')
-            return soup.get_text()
+            result = soup.get_text()
+            return result
     except Exception as e:
         logging.error(f"Error reading HTML {html_path}: {e}")
         return ""
 
 def remove_newlines(serie: pd.Series) -> pd.Series:
     """Remove newlines and unnecessary spaces from the given pandas series."""
-    serie = serie.str.replace('\n', ' ')
-    serie = serie.str.replace('\\n', ' ')
-    serie = serie.str.replace('  ', ' ')
-    serie = serie.str.replace('  ', ' ')
+    serie = serie.str.replace(r'(\n|\\n|  +)', ' ', regex=True)
     return serie
 
 def process_files(directory: str) -> pd.DataFrame:
     """Process files in a given directory and convert them to a dataframe."""
-    print(f'Processing directory: {directory}')  # Print the directory name to console
+    logger.info(f'Processing directory: {directory}')
     texts = []
 
-    for file in os.listdir(directory):
-        if file.endswith(".txt"):
-            text = extract_text_from_txt(os.path.join(directory, file))
-            texts.append((file[:-4], text))
-        elif file.endswith(".pdf"):
-            text = extract_text_from_pdf(os.path.join(directory, file))
-            texts.append((file[:-4], text))
-        elif file.endswith(".html"):
-            text = extract_text_from_html(os.path.join(directory, file))
-            texts.append((file[:-5], text))
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        futures = []
+
+        for file in os.listdir(directory):
+            file_path = os.path.join(directory, file)
+            # Asynchronously extract text from files
+            futures.append(executor.submit(_extract_text, file, file_path))
+
+        # Append results of the futures to texts
+        for future in futures:
+            try:
+                texts.append(future.result())
+            except Exception as e:
+                logger.error(f"Error in future: {e}")
 
     df = pd.DataFrame(texts, columns=['fname', 'text'])
     df['text'] = df.fname + ". " + remove_newlines(df.text)
-    
+
     # Check if the 'processed' directory exists, if not, create it
     if not os.path.exists('processed'):
         os.makedirs('processed')
     
     df.to_csv('processed/scraped.csv')
-    logging.info("Files processed and saved to 'processed/scraped.csv'.")
+    logger.info("Files processed and saved to 'processed/scraped.csv'.")
     return df
+
+def _extract_text(file, file_path):
+    """Extract text from a single file and log the status."""
+    try:
+        if file.endswith('.pdf'):
+            text = extract_text_from_pdf(file_path)
+        elif file.endswith('.html'):
+            text = extract_text_from_html(file_path)
+        elif file.endswith('.txt'):
+            text = extract_text_from_txt(file_path)
+        else:
+            text = ""
+        return (file, text)
+    except Exception as e:
+        logger.error(f"Error processing file {file}: {e}")
+        return (file, "")
 
 def tokenize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Tokenize the dataframe using OpenAI's tiktoken."""
