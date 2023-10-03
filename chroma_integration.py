@@ -3,7 +3,7 @@
 import os
 import logging
 import openai
-
+import time
 
 from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
@@ -45,28 +45,56 @@ def create_chroma_collection(collection_name: str) -> Client:
         return None  # Return None in case of an error
 
 
-def add_embeddings_to_chroma(df: pd.DataFrame, collection: Client):
-    try:
-        logging.info('Adding embeddings to Chroma.')
-        print('Adding embeddings to Chroma.')
-        embeddings = df["embeddings"].tolist()
-        documents = df["text"].tolist()
-        ids = [str(i) for i in range(len(df))]
-        collection.add(embeddings=embeddings, documents=documents, ids=ids)
-        logging.info('Embeddings added to Chroma.')
-        print('Embeddings added to Chroma.')
-    except Exception as e:
-        logging.error(f"Error in add_embeddings_to_chroma: {e}")
-        print(f"Error: {e}")
+def add_embeddings_to_chroma(df: pd.DataFrame, collection):
+    batch_size = 5461  # Set the batch size to the maximum allowed number of embeddings
+    n_batches = -(-len(df) // batch_size)  # Calculate the number of batches, using ceiling division
+    
+    for i in range(n_batches):
+        start_idx = i * batch_size
+        end_idx = start_idx + batch_size
+        batch_df = df.iloc[start_idx:end_idx]  # Get the next batch of data
+        
+        # Prepare the data for submission
+        documents = batch_df.text.tolist()
+        embeddings = batch_df.embeddings.tolist()
+        ids = batch_df.index.tolist()  # Assuming the DataFrame index contains unique IDs for each document
+        
+        # Submit the batch of data to Chroma
+        try:
+            print(f'Submitting batch {i + 1} of {n_batches}')
+            collection.add(
+                documents=documents,
+                embeddings=embeddings,
+                ids=ids
+            )
+            print(f'Successfully submitted batch {i + 1} of {n_batches}')
+        except Exception as e:
+            print(f'Error submitting batch {i + 1} of {n_batches}: {e}')
+
 
 
 def index_data_to_chroma(df: pd.DataFrame, collection_name: str = "default_collection"):
     try:
         logging.info(f'Indexing data to Chroma with collection name: {collection_name}')
         print(f'Indexing data to Chroma with collection name: {collection_name}')
+
         collection = create_chroma_collection(collection_name)
+        
+        logging.info('Starting process of turning document text into embedding.')
+        print('Starting process of turning document text into embedding.')
+
+        embedding_conversion_start_time = time.time()  # record the start time
         df["embeddings"] = df.text.apply(lambda x: openai.Embedding.create(input=x, engine="text-embedding-ada-002")["data"][0]["embedding"])
+        embedding_conversion_end_time = time.time()  # record the end time
+        embedding_conversion_elapsed_time = embedding_conversion_end_time - embedding_conversion_start_time  # calculate the elapsed time
+        
+
+        logging.info('Data embedding conversion finished successfully!')
+        print('Data embedding conversion finished successfully!')
+        print(f'Time taken: {embedding_conversion_elapsed_time:.2f} seconds')
+
         add_embeddings_to_chroma(df, collection)
+
         logging.info('Data indexed to ChromaDB successfully!')
         print('Data indexed to ChromaDB successfully!')
     except Exception as e:

@@ -58,6 +58,7 @@ def remove_newlines(serie: pd.Series) -> pd.Series:
 
 def process_files(directory: str) -> pd.DataFrame:
     """Process files in a given directory and convert them to a dataframe."""
+    print(f'Processing directory: {directory}')  # Print the directory name to console
     texts = []
 
     for file in os.listdir(directory):
