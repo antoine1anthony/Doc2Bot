@@ -4,7 +4,7 @@ import openai
 import logging
 
 MAX_RETRIES = 5  # Maximum number of retries if a request fails
-BASE_SLEEP = 60  # Base sleep time (in seconds) between retries (will be multiplied in each iteration)
+BASE_SLEEP = 60 # Base sleep time (in seconds) between retries (will be multiplied in each iteration)
 
 def convert_text_to_embedding(text: str) -> list:
     """Convert a text to embedding using OpenAI API with rate limit handling."""

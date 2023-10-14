@@ -8,6 +8,8 @@ from openai.datalib.pandas_helper import pandas as pd
 from bs4 import BeautifulSoup
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
+import moviepy.editor as mp
+import openai
 
 # Setup logging
 logging.basicConfig(filename='data_processing.log', level=logging.INFO)
@@ -83,6 +85,49 @@ def process_files(directory: str) -> pd.DataFrame:
     logger.info("Files processed and saved to 'processed/scraped.csv'.")
     return df
 
+def extract_audio_from_video(video_path: str, audio_path: str) -> None:
+    """
+    Extract audio from a given video file.
+    """
+    try:
+        clip = mp.VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path)
+        clip.close()
+    except Exception as e:
+        logger.error(f"Error extracting audio from {video_path}: {e}")
+
+def transcribe_audio(audio_path: str) -> str:
+    """
+    Transcribe audio using Whisper API and delete the audio file afterward.
+    """
+    try:
+        with open(audio_path, "rb") as audio_file:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+        
+        # Delete the temporary audio file after transcription
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        
+        return transcript.get('text')
+    except Exception as e:
+        logger.error(f"Error transcribing {audio_path}: {e}")
+        return ""
+
+def extract_text_from_video(video_path: str) -> str:
+    """
+    Extract and transcribe text from a given video file.
+    """
+    # Specify path for temporary audio file
+    audio_path = "temp_audio.mp3"
+    
+    # Extract Audio
+    extract_audio_from_video(video_path, audio_path)
+    
+    # Transcribe Audio
+    transcript_text = transcribe_audio(audio_path)
+    
+    return transcript_text
+
 def _extract_text(file, file_path):
     """Extract text from a single file and log the status."""
     try:
@@ -92,6 +137,8 @@ def _extract_text(file, file_path):
             text = extract_text_from_html(file_path)
         elif file.endswith('.txt'):
             text = extract_text_from_txt(file_path)
+        elif file.endswith(('.mov', '.mp4', '.avi', '.wmv')):
+            text = extract_text_from_video(file_path)
         else:
             text = ""
         return (file, text)
