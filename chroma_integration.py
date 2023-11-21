@@ -8,10 +8,12 @@ from dotenv import load_dotenv
 from openai.datalib.pandas_helper import pandas as pd
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+
 from chromadb import Client
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
-from embeddings_helper import convert_text_to_embedding
+from embeddings_helper import convert_text_to_embedding, convert_text_to_embedding_CLIP, MODEL, CLIPEmbeddingFunction
+from gpu_helper import DEVICE
 
 # Load environment variables
 load_dotenv()
@@ -25,11 +27,13 @@ OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_KEY
 
 # Embedding model for Chroma
-EMBEDDING_MODEL = "text-embedding-ada-002"
+OPENAI_API_EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Initialize Chroma client
-chroma_client = Client(Settings(anonymized_telemetry=False, allow_reset=True))
-embedding_function = OpenAIEmbeddingFunction(api_key=OPENAI_KEY, model_name=EMBEDDING_MODEL)
+CHROMA_CLIENT = Client(Settings(anonymized_telemetry=False, allow_reset=True))
+OPENAI_API_EMBEDDING_FUNCTION = OpenAIEmbeddingFunction(api_key=OPENAI_KEY, model_name=OPENAI_API_EMBEDDING_MODEL)
+    
+CLIP_EMBEDDING_FUNCTION = CLIPEmbeddingFunction()
 
 # Constants
 BATCH_SIZE = 5461  # Set the batch size to the maximum allowed number of embeddings
@@ -40,7 +44,15 @@ def create_chroma_collection(collection_name: str) -> Optional[Client]:
     """Create or retrieve a Chroma collection."""
     try:
         logger.info(f'Creating or retrieving Chroma collection: {collection_name}')
-        collection = chroma_client.get_or_create_collection(collection_name, embedding_function=embedding_function)
+
+        if DEVICE == "cpu":
+
+            collection = CHROMA_CLIENT.get_or_create_collection(collection_name, embedding_function=OPENAI_API_EMBEDDING_FUNCTION)
+
+        else:
+
+            collection = CHROMA_CLIENT.get_or_create_collection(collection_name, embedding_function=CLIP_EMBEDDING_FUNCTION)
+
         logger.info(f'Chroma Collection created or retrieved! The collection name is: {collection_name}')
         return collection
     except Exception as e:
@@ -93,32 +105,50 @@ def index_data_to_chroma(df: pd.DataFrame, collection_name: str = "default_colle
         print(f'Indexing data to Chroma with collection name: {collection_name}')
 
         collection = create_chroma_collection(collection_name)
-        
+
         logging.info('Starting process of turning document text into embedding.')
         print('Starting process of turning document text into embedding.')
 
         embedding_conversion_start_time = time.time()  # Record the start time
-        
+
         # Split the DataFrame into batches
         n_batches = -(-len(df) // EMBEDDING_CONVERSION_BATCH_SIZE)
         embeddings = []
 
-        with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        if DEVICE == "cpu":
+
+                with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                    for i in range(n_batches):
+                        start_idx = i * EMBEDDING_CONVERSION_BATCH_SIZE
+                        end_idx = start_idx + EMBEDDING_CONVERSION_BATCH_SIZE
+                        batch_df = df.iloc[start_idx:end_idx]
+
+                        # Asynchronously convert text to embedding
+                        futures = [executor.submit(convert_text_to_embedding, text) for text in batch_df.text]
+
+                        # Collect the results and append them to the embeddings list
+                        for future in futures:
+                            try:
+                                embeddings.append(future.result())
+                            except Exception as e:
+                                logging.error(f"Error in future: {e}")
+                                embeddings.append([])  # Append an empty embedding in case of an error
+        else:
+
             for i in range(n_batches):
                 start_idx = i * EMBEDDING_CONVERSION_BATCH_SIZE
                 end_idx = start_idx + EMBEDDING_CONVERSION_BATCH_SIZE
                 batch_df = df.iloc[start_idx:end_idx]
 
-                # Asynchronously convert text to embedding
-                futures = [executor.submit(convert_text_to_embedding, text) for text in batch_df.text]
-                
+                converted_embeddings = [convert_text_to_embedding_CLIP(text).cpu().detach().numpy().flatten().tolist() for text in batch_df.text]
+
                 # Collect the results and append them to the embeddings list
-                for future in futures:
+                for c_emb in converted_embeddings:
                     try:
-                        embeddings.append(future.result())
+                        embeddings.append(c_emb)
                     except Exception as e:
-                        logging.error(f"Error in future: {e}")
-                        embeddings.append([])  # Append an empty embedding in case of an error
+                        logging.error(f"Error in converted_embeddings: {e}")
+                        embeddings.append([])
 
         df['embeddings'] = embeddings
 
@@ -160,9 +190,9 @@ def create_context(collection_name: str, question: str, max_len: int = 1800) -> 
         logging.info(f'Entering create_context with collection_name: {collection_name}, question: {question}, max_len: {max_len}')
         print(f'Entering create_context with collection_name: {collection_name}, question: {question}, max_len: {max_len}')
 
-        collection = chroma_client.get_collection(name=collection_name, embedding_function=embedding_function)
-        logging.info('Retrieved collection from chroma_client.')
-        print('Retrieved collection from chroma_client.')
+        collection = CHROMA_CLIENT.get_collection(name=collection_name, embedding_function=CLIP_EMBEDDING_FUNCTION)
+        logging.info('Retrieved collection from CHROMA_CLIENT.')
+        print('Retrieved collection from CHROMA_CLIENT.')
 
         results = query_chroma_collection(collection, question, n_results=5)
         logging.info(f'Query results: {results}')

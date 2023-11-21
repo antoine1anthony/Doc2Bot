@@ -7,3 +7,7 @@ chromadb[config, utils]
 pytest
 bs4
 moviepy
+torch
+transforms
+datasets
+openai-whisper
