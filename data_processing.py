@@ -10,10 +10,10 @@ from typing import List
 from concurrent.futures import ThreadPoolExecutor
 import moviepy.editor as mp
 import openai
-import whisper
+# import whisper
 from gpu_helper import DEVICE
 
-LOCAL_WHISPER_MODEL = whisper.load_model("large")
+# LOCAL_WHISPER_MODEL = whisper.load_model("large")
 
 # Setup logging
 logging.basicConfig(filename='data_processing.log', level=logging.INFO)
@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_THREADS = 15  # Limit the number of threads to prevent overloading
+
+SUPPORTED_EXTENSIONS = [
+    '.ts', '.tsx', '.js', '.jsx', '.cpp', '.css', '.json',
+    '.kt', '.swift', '.md', '.java', '.php', '.txt', '.mov', '.mp4',
+    '.py', '.go', '.rs', '.rb', '.sh', '.html', '.pdf', '.avi', '.wmv'
+    # Add other supported file extensions here
+]
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extract text from a given PDF file."""
@@ -119,10 +126,10 @@ def transcribe_audio(audio_path: str) -> str:
     """
     try:
         with open(audio_path, "rb") as audio_file:
-            if DEVICE == "cpu":
+            # if DEVICE == "cpu":
                 transcript = openai.Audio.transcribe("whisper-1", audio_file)
-            else:
-                transcript = LOCAL_WHISPER_MODEL.transcribe(audio_file)
+            # else:
+                # transcript = LOCAL_WHISPER_MODEL.transcribe(audio_file)
 
         # Delete the temporary audio file after transcription
         if os.path.exists(audio_path):
