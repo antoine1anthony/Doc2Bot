@@ -8,3 +8,7 @@ pytest
 bs4
 moviepy
 pydub
+torch
+transforms
+datasets
+openai-whisper

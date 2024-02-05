@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_THREADS = 15  # Limit the number of threads to prevent overloading
 
+SUPPORTED_EXTENSIONS = [
+    '.ts', '.tsx', '.js', '.jsx', '.cpp', '.css', '.json',
+    '.kt', '.swift', '.md', '.java', '.php', '.txt', '.mov', '.mp4',
+    '.py', '.go', '.rs', '.rb', '.sh', '.html', '.pdf', '.avi', '.wmv'
+    # Add other supported file extensions here
+]
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extract text from a given PDF file."""
@@ -61,6 +67,14 @@ def remove_newlines(serie: pd.Series) -> pd.Series:
     return serie
 
 
+def traverse_directory(directory):
+    """Traverse the directory and list all supported code files."""
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if any(file.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+                yield os.path.join(root, file)
+
+
 def process_files(directory: str) -> pd.DataFrame:
     """Process files in a given directory and convert them to a dataframe."""
     logger.info(f'Processing directory: {directory}')
@@ -69,10 +83,9 @@ def process_files(directory: str) -> pd.DataFrame:
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         futures = []
 
-        for file in os.listdir(directory):
-            file_path = os.path.join(directory, file)
+        for file_path in traverse_directory(directory):
             # Asynchronously extract text from files
-            futures.append(executor.submit(_extract_text, file, file_path))
+            futures.append(executor.submit(_extract_text, os.path.basename(file_path), file_path))
 
         # Append results of the futures to texts
         for future in futures:
@@ -87,7 +100,7 @@ def process_files(directory: str) -> pd.DataFrame:
     # Check if the 'processed' directory exists, if not, create it
     if not os.path.exists('processed'):
         os.makedirs('processed')
-    
+
     df.to_csv('processed/scraped.csv')
     logger.info("Files processed and saved to 'processed/scraped.csv'.")
     return df
@@ -118,7 +131,7 @@ def transcribe_audio(audio_path: str) -> str:
         # Delete the temporary audio file after transcription
         if os.path.exists(audio_path):
             os.remove(audio_path)
-        
+
         return transcript.get('text')
     except Exception as e:
         logger.error(f"Error transcribing {audio_path}: {e}")
@@ -164,10 +177,10 @@ def extract_text_from_video(video_path: str) -> str:
     """
     # Specify path for temporary audio file
     audio_path = "temp_audio.mp3"
-    
+
     # Extract Audio
     extract_audio_from_video(video_path, audio_path)
-    
+
     # Transcribe Audio
     transcript_text = transcribe_large_audio(audio_path)
     
@@ -178,15 +191,18 @@ def extract_text_from_video(video_path: str) -> str:
 def _extract_text(file, file_path):
     """Extract text from a single file and log the status."""
     try:
-        if file.endswith('.pdf'):
+        extension = os.path.splitext(file)[1].lower()
+
+        if extension == '.pdf':
             text = extract_text_from_pdf(file_path)
-        elif file.endswith('.html'):
+        elif extension == '.html':
             text = extract_text_from_html(file_path)
-        elif file.endswith('.txt'):
+        elif extension in ['.txt', '.md', '.css', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.json', '.kt', '.swift', '.java', '.php', '.py', '.go', '.rs', '.rb', '.sh']:
             text = extract_text_from_txt(file_path)
-        elif file.endswith(('.mov', '.mp4', '.avi', '.wmv')):
+        elif extension in ['.mov', '.mp4', '.avi', '.wmv']:
             text = extract_text_from_video(file_path)
         else:
+            logger.info(f"Unsupported file extension {extension} for file {file}")
             text = ""
         return (file, text)
     except Exception as e:
