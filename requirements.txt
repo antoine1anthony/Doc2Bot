@@ -7,3 +7,4 @@ chromadb[config, utils]
 pytest
 bs4
 moviepy
+pydub

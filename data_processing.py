@@ -10,6 +10,8 @@ from typing import List
 from concurrent.futures import ThreadPoolExecutor
 import moviepy.editor as mp
 import openai
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
 
 # Setup logging
 logging.basicConfig(filename='data_processing.log', level=logging.INFO)
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_THREADS = 15  # Limit the number of threads to prevent overloading
+
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extract text from a given PDF file."""
@@ -29,6 +32,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         logger.error(f"Error reading PDF {pdf_path}: {e}")
         return ""
 
+
 def extract_text_from_txt(txt_path: str) -> str:
     """Extract text from a given TXT file."""
     try:
@@ -37,6 +41,7 @@ def extract_text_from_txt(txt_path: str) -> str:
     except Exception as e:
         logging.error(f"Error reading TXT {txt_path}: {e}")
         return ""
+
 
 def extract_text_from_html(html_path: str) -> str:
     """Extract text from a given HTML file."""
@@ -49,10 +54,12 @@ def extract_text_from_html(html_path: str) -> str:
         logging.error(f"Error reading HTML {html_path}: {e}")
         return ""
 
+
 def remove_newlines(serie: pd.Series) -> pd.Series:
     """Remove newlines and unnecessary spaces from the given pandas series."""
     serie = serie.str.replace(r'(\n|\\n|  +)', ' ', regex=True)
     return serie
+
 
 def process_files(directory: str) -> pd.DataFrame:
     """Process files in a given directory and convert them to a dataframe."""
@@ -85,6 +92,7 @@ def process_files(directory: str) -> pd.DataFrame:
     logger.info("Files processed and saved to 'processed/scraped.csv'.")
     return df
 
+
 def extract_audio_from_video(video_path: str, audio_path: str) -> None:
     """
     Extract audio from a given video file.
@@ -96,14 +104,17 @@ def extract_audio_from_video(video_path: str, audio_path: str) -> None:
     except Exception as e:
         logger.error(f"Error extracting audio from {video_path}: {e}")
 
+
 def transcribe_audio(audio_path: str) -> str:
     """
     Transcribe audio using Whisper API and delete the audio file afterward.
     """
     try:
+        print('running transcribe_audio')
+        print('audio_path: %s' % audio_path)
         with open(audio_path, "rb") as audio_file:
             transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        
+            print(f'Transcript: {transcript}')
         # Delete the temporary audio file after transcription
         if os.path.exists(audio_path):
             os.remove(audio_path)
@@ -112,6 +123,40 @@ def transcribe_audio(audio_path: str) -> str:
     except Exception as e:
         logger.error(f"Error transcribing {audio_path}: {e}")
         return ""
+
+
+def transcribe_large_audio(audio_path: str, chunk_length: int = 10000) -> str:
+    """
+    Transcribe audio that might be larger than the API's maximum limit.
+    
+    :param audio_path: Path to the audio file.
+    :param chunk_length: Length of chunks to split the audio (in ms). Default is 10000ms (10s).
+    :return: Transcribed text.
+    """
+    try:
+        audio = AudioSegment.from_file(audio_path, format="mp3")
+        chunks = split_on_silence(
+            audio,
+            min_silence_len=500,  # must be silent for at least 500ms
+            silence_thresh=-40,    # consider it silent if quieter than -40 dBFS
+            keep_silence=500,      # keep 500ms of leading/trailing silence
+        )
+        
+        # Fallback: If silence splitting creates too large chunks, split audio into fixed-size chunks
+        if any(len(chunk) > chunk_length for chunk in chunks):
+            chunks = [audio[i:i+chunk_length] for i in range(0, len(audio), chunk_length)]
+        
+        transcriptions = []
+        for i, chunk in enumerate(chunks):
+            chunk_path = f"chunk_{i}.mp3"
+            chunk.export(chunk_path, format="mp3")
+            transcriptions.append(transcribe_audio(chunk_path))
+        
+        return " ".join(transcriptions)
+    except Exception as e:
+        logger.error(f"Error transcribing {audio_path}: {e}")
+        return ""
+
 
 def extract_text_from_video(video_path: str) -> str:
     """
@@ -124,9 +169,11 @@ def extract_text_from_video(video_path: str) -> str:
     extract_audio_from_video(video_path, audio_path)
     
     # Transcribe Audio
-    transcript_text = transcribe_audio(audio_path)
+    transcript_text = transcribe_large_audio(audio_path)
     
+    # print(f'Transcribe Audio from {transcript_text}')
     return transcript_text
+
 
 def _extract_text(file, file_path):
     """Extract text from a single file and log the status."""
@@ -145,6 +192,7 @@ def _extract_text(file, file_path):
     except Exception as e:
         logger.error(f"Error processing file {file}: {e}")
         return (file, "")
+
 
 def tokenize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Tokenize the dataframe using OpenAI's tiktoken."""

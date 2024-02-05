@@ -44,14 +44,8 @@ class IntegratedChatGPT:
 
         # Keep the conversation history to a fixed length.
         if len(self.conversation) > 4:
-            self.conversation.pop(0)
+            self.conversation.pop(1)
         return response
-
-    def is_repetitive(self, response: str) -> bool:
-        for message in self.conversation[-3:]:
-            if message['content'] == response:
-                return True
-        return False
 
     def chatgpt(self, conversation: List[Dict[str, str]], chatbot: str, user_input: str, **kwargs) -> str:
         params = {**self.DEFAULT_PARAMS, **kwargs}
@@ -67,15 +61,11 @@ class IntegratedChatGPT:
                 messages=messages_input)
             
             chat_response = completion['choices'][0]['message']['content']
+            return chat_response
         except openai.api.error.APIError as e:
             logging.warning(f"Error during chat completion: {e}")
             raise ChatGPTError("Error during chat completion.") from e
 
-        # If the response is repetitive, try again.
-        if self.is_repetitive(chat_response):
-            return self.chatgpt(conversation, chatbot, user_input, **kwargs)
-        else:
-            return chat_response
 
     def chatgpt_with_retry(self, conversation: List[Dict[str, str]], chatbot: str, user_input: str, **kwargs) -> Optional[str]:
         for i in range(self.retries):
