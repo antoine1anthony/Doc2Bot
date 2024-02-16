@@ -83,12 +83,12 @@ class IntegratedChatGPT:
                     response = self.chatgpt(conversation, chatbot, user_input, **kwargs)
 
                 return response
-            except openai.error.RateLimitError as e:
+            except openai.RateLimitError as e:
                 logging.warning(f"Rate limit reached, waiting for {wait_time} seconds before retrying...")
                 print(f"Rate limit reached, waiting for {wait_time} seconds before retrying...")
                 time.sleep(wait_time)
                 wait_time *= backoff_factor
-            except openai.error.APIError as e:
+            except openai.APIError as e:
                 logging.warning(f"Error in chatgpt attempt {i + 1}: {e}. Retrying...")
             except Exception as e:
                 logging.error(f"Unexpected error in chatgpt attempt {i + 1}: {e}. No more retries.")
@@ -108,7 +108,7 @@ class IntegratedChatGPT:
 
         try:
             completion = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4-0125-preview",
                 temperature=params["temperature"],
                 frequency_penalty=params["frequency_penalty"],
                 presence_penalty=params["presence_penalty"],

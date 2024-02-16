@@ -8,7 +8,7 @@ import os
 import logging
 import time
 import threading
-from openai.datalib.pandas_helper import pandas as pd
+import pandas as pd
 
 # Load environment variables
 load_dotenv()

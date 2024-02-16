@@ -1,5 +1,7 @@
 tiktoken
-openai[embeddings, wandb, datalib]
+openai[embeddings, wandb]
+pandas
+numpy
 PyPDF2
 scikit-learn
 python-dotenv
@@ -9,6 +11,6 @@ bs4
 moviepy
 pydub
 torch
-transforms
+transformers
 datasets
 openai-whisper

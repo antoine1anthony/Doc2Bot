@@ -4,7 +4,7 @@ import os
 import logging
 import tiktoken
 import PyPDF2
-from openai.datalib.pandas_helper import pandas as pd
+import pandas as pd
 from bs4 import BeautifulSoup
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
