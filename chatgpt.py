@@ -1,5 +1,7 @@
 #chatgpt.py
-import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=self.api_key)
 import logging
 from chroma_integration import  create_context
 from typing import List, Optional, Dict, Any
@@ -22,7 +24,6 @@ class IntegratedChatGPT:
         self.retries = retries
         self.collection_name = collection_name
 
-        openai.api_key = self.api_key
 
     def chat(self, user_input, log_file, bot_name):
         self.conversation.append({"role": "user", "content": user_input})
@@ -52,14 +53,13 @@ class IntegratedChatGPT:
         messages_input.insert(0, prompt[0])
 
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-4",
-                temperature=params["temperature"],
-                frequency_penalty=params["frequency_penalty"],
-                presence_penalty=params["presence_penalty"],
-                messages=messages_input)
+            completion = client.chat.completions.create(model="gpt-4",
+            temperature=params["temperature"],
+            frequency_penalty=params["frequency_penalty"],
+            presence_penalty=params["presence_penalty"],
+            messages=messages_input)
             
-            chat_response = completion['choices'][0]['message']['content']
+            chat_response = completion.choices[0].message.content
             return chat_response
         except openai.api.error.APIError as e:
             logging.warning(f"Error during chat completion: {e}")
@@ -107,14 +107,13 @@ class IntegratedChatGPT:
         conversation_with_context.append(prompt_message)
 
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-4-0125-preview",
-                temperature=params["temperature"],
-                frequency_penalty=params["frequency_penalty"],
-                presence_penalty=params["presence_penalty"],
-                messages=conversation_with_context)
+            completion = client.chat.completions.create(model="gpt-4-0125-preview",
+            temperature=params["temperature"],
+            frequency_penalty=params["frequency_penalty"],
+            presence_penalty=params["presence_penalty"],
+            messages=conversation_with_context)
             
-            chat_response = completion['choices'][0]['message']['content']
+            chat_response = completion.choices[0].message.content
         except Exception as e:
             logging.error(f"Error during context-based completion: {e}")
             raise ChatGPTError("Error during context-based completion.") from e

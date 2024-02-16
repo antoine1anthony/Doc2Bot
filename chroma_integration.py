@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 # Load OPENAI API Key environment variable and set it within OpenAI API
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_KEY
 
 # Embedding model for Chroma
 OPENAI_API_EMBEDDING_MODEL = "text-embedding-3-small"

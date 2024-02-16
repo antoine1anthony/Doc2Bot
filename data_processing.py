@@ -9,7 +9,9 @@ from bs4 import BeautifulSoup
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
 import moviepy.editor as mp
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 
@@ -126,13 +128,13 @@ def transcribe_audio(audio_path: str) -> str:
         print('running transcribe_audio')
         print('audio_path: %s' % audio_path)
         with open(audio_path, "rb") as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+            transcript = client.audio.transcribe("whisper-1", audio_file)
             print(f'Transcript: {transcript}')
         # Delete the temporary audio file after transcription
         if os.path.exists(audio_path):
             os.remove(audio_path)
 
-        return transcript.get('text')
+        return transcript.text
     except Exception as e:
         logger.error(f"Error transcribing {audio_path}: {e}")
         return ""
