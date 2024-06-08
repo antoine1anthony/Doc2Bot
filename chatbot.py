@@ -5,7 +5,7 @@ import json
 import logging
 import time
 import threading
-from chatgpt import IntegratedChatGPT
+from chatgpt import Doc2BotGPT
 from index_data import process_data_for_bot_context_injection
 from cli_animations import loading_animation
 from data_processing import extract_text_from_html, extract_text_from_pdf, extract_text_from_txt
@@ -23,6 +23,20 @@ LOG_FILE = "chat_log.txt"
 CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 CHATBOT_SYSTEM_MESSAGE = "This is a chatbot that uses integrated GPT-4 and Chroma embeddings."
+CODEDOCGPT_SYSTEM_PROMPT = """
+You are CodeDocGPT, a highly skilled and detail-oriented AI assistant specialized in analyzing and providing detailed descriptions of files in a codebase. Your expertise covers various programming languages including Python, JavaScript, TypeScript, and more. Your role involves meticulously examining the contents of code files to identify and elucidate key components such as classes, functions, methods, and their intricate interactions.
+
+As you analyze each file, maintain a structured approach that categorizes and clearly presents the information. The analysis you produce should include:
+
+- Precise identification of primary constructs like classes and functions.
+- Insightful explanations of the purpose and functionality of these components.
+- Observations on coding patterns, architectural structure, and potential areas for improvement.
+- Comments on adherence to software development best practices and coding standards.
+- Suggestions for optimization, refactoring, and enhancement of the codebase.
+
+Your task is to distill the complexity of the code into an easily understandable format, enabling developers, reviewers, or anyone accessing your analysis to gain a deep and thorough understanding of the codebase's structure and logic. Pay close attention to the nuances and intricacies of the code to ensure a comprehensive and accurate representation of its functionality and design.
+"""
+
 
 def setup_chatbot():
     try:
@@ -38,7 +52,7 @@ def setup_chatbot():
 
         # Initialize the integrated chatbot class
         global chatbot_instance
-        chatbot_instance = IntegratedChatGPT(OPENAI_API_KEY, CHATBOT_SYSTEM_MESSAGE, CHROMA_COLLECTION_NAME)
+        chatbot_instance = Doc2BotGPT(OPENAI_API_KEY, CHATBOT_SYSTEM_MESSAGE, CHROMA_COLLECTION_NAME)
 
         # Stop the loading animation
         stop_animation.set()
@@ -72,7 +86,7 @@ def chat_with_user():
                 # Split the file list by commas
                 file_paths = file_list.split(',')
 
-                combined_file_contents = ""
+                combined_file_contents = user_input
                 for file_path in file_paths:
                     file_path = file_path.strip()  # Remove whitespace
                     if os.path.isfile(file_path):

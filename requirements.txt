@@ -1,5 +1,5 @@
 tiktoken
-openai[embeddings, wandb, datalib]
+openai
 PyPDF2
 scikit-learn
 python-dotenv
@@ -11,3 +11,4 @@ torch
 transforms
 datasets
 openai-whisper
+fpdf

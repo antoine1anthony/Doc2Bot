@@ -8,7 +8,7 @@ import os
 import logging
 import time
 import threading
-from openai.datalib.pandas_helper import pandas as pd
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -16,9 +16,32 @@ load_dotenv()
 # Create constants
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME")
 
+
 def process_data_for_bot_context_injection():
-    directories_input = input("Enter the paths to your data directories separated by commas (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")
-    directories = directories_input.split(',')
+    # directories_input = input("Enter the paths to your data directories separated by commas (IMPORTANT! THIS WILL BE YOUR BOT'S EMBEDDINGS AND CONTEXT!): ")
+    # directories = directories_input.split(',')
+
+    # directories = [
+    #     "python",
+    #     "node.js",
+    #     "typescript",
+    #     "javascript",
+    #     "unity_manual_data",
+    #     "unity_script_reference_data",
+    #     "react_native_data",
+    #     "godot",
+    #     "postgresql",
+    #     "mongodb",
+    #     "c++_data",
+    #     "blender_data",
+    #     "aws_sage_maker",
+    #     "aws_s3",
+    #     "aws_lambda",
+    #     "aws_documentdb",
+    #     "webassembly"
+    #     ]
+
+    directories = ["c++_data", "react_native_data"]
 
     all_dataframes = []  # List to store dataframes from each directory
 
@@ -28,7 +51,8 @@ def process_data_for_bot_context_injection():
 
             # Start the loading animation in a separate thread
             stop_animation = threading.Event()
-            animation_thread = threading.Thread(target=loading_animation, args=(stop_animation,))
+            animation_thread = threading.Thread(
+                target=loading_animation, args=(stop_animation,))
             animation_thread.start()
 
             # Start timer to calculate processing time
@@ -43,9 +67,10 @@ def process_data_for_bot_context_injection():
 
             # Calculate and print processing time
             processing_time = (time.time() - start_time) / 60
-            print(f"Processing completed in {processing_time:.2f} minutes.")
+            print(f"Processing {directory} completed in {processing_time:.2f} minutes.")
 
-            all_dataframes.append(df)  # Append the processed dataframe to the list
+            # Append the processed dataframe to the list
+            all_dataframes.append(df)
         else:
             logging.error(f"Directory {directory} not found.")
             print(f"Directory {directory} not found.")

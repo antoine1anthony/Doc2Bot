@@ -5,7 +5,7 @@ import logging
 import openai
 import time
 from dotenv import load_dotenv
-from openai.datalib.pandas_helper import pandas as pd
+import pandas as pd
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 

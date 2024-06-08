@@ -37,7 +37,7 @@ Manages chatbot initialization, presenting a user interface for interaction, and
 
 ### chatgpt.py
 
-Defines `IntegratedChatGPT`, a class that manages interactions with GPT-4, handling conversation history, API interactions, and managing responses with and without context from ChromaDB.
+Defines `Doc2BotGPT`, a class that manages interactions with GPT-4, handling conversation history, API interactions, and managing responses with and without context from ChromaDB.
 
 ### chroma_integration.py
 
